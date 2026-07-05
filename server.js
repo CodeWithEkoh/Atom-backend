@@ -9,35 +9,42 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
+        origin: [
+            "https://atom-scan.netlify.app",
+            "http://localhost:3000"
+        ],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
 let audienceCount = 0;
 
 io.on('connection', (socket) => {
+    // Gracefully handles if query parameter uses 'audience' or 'viewer'
     const role = socket.handshake.query.role || 'viewer';
     console.log(`[System Link] New connection established. Role assigned: ${role}`);
 
-    if (role === 'audience') {
+    if (role === 'audience' || role === 'viewer') {
         audienceCount++;
         io.emit('audience_update', { count: audienceCount });
-        // Send an explicit confirmation back to this specific client so it knows it's truly registered
         socket.emit('registration_confirmed'); 
     }
 
-    // Give the operator a clean acknowledgment upon connection
+    // Explicit sync packet pushed directly to the control dashboard console
     if (role === 'operator') {
-        socket.emit('server_ack', { message: 'Atom Node Pipeline Online', audienceCount: audienceCount });
+        socket.emit('server_ack', { 
+            message: 'Atom Node Pipeline Online', 
+            audienceCount: audienceCount 
+        });
     }
 
     // ── INTER-PORT EVENT ROUTING MATRIX ──
 
     // 1. Catch scan start signal from operator and mirror it immediately to all audience channels
-    socket.on('scanning_start', () => {
+    socket.on('scanning_start', (data) => {
         console.log('[Matrix Sync] Operator initiated sweep. Broadcasting state...');
-        socket.broadcast.emit('operator_scanning');
+        socket.broadcast.emit('operator_scanning', data);
     });
 
     // 2. Capture live ticking countdown increments and pass them to audience nodes
@@ -54,14 +61,15 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`[System Link] Connection closed. Role departed: ${role}`);
-        if (role === 'audience') {
+        if (role === 'audience' || role === 'viewer') {
             audienceCount = Math.max(0, audienceCount - 1);
             io.emit('audience_update', { count: audienceCount });
         }
     });
 });
 
-const PORT = 3000;
+// Dynamic assignment fallback parameters for cloud servers like Render
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log('\n┌─────────────────────────────────┐');
     console.log('│  Atom Drug Guard - Relay Server │');
