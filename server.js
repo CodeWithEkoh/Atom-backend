@@ -19,9 +19,9 @@ const io = new Server(server, {
 });
 
 let audienceCount = 0;
+let isServerScanning = false; // System safety valve
 
 io.on('connection', (socket) => {
-    // Gracefully handles if query parameter uses 'audience' or 'viewer'
     const role = socket.handshake.query.role || 'viewer';
     console.log(`[System Link] New connection established. Role assigned: ${role}`);
 
@@ -31,7 +31,6 @@ io.on('connection', (socket) => {
         socket.emit('registration_confirmed'); 
     }
 
-    // Explicit sync packet pushed directly to the control dashboard console
     if (role === 'operator') {
         socket.emit('server_ack', { 
             message: 'Atom Node Pipeline Online', 
@@ -41,21 +40,22 @@ io.on('connection', (socket) => {
 
     // ── INTER-PORT EVENT ROUTING MATRIX ──
 
-    // 1. Catch scan start signal from operator and mirror it immediately to all audience channels
     socket.on('scanning_start', (data) => {
+        isServerScanning = true; // Open the telemetry gate
         console.log('[Matrix Sync] Operator initiated sweep. Broadcasting state...');
         socket.broadcast.emit('operator_scanning', data);
     });
 
-    // 2. Capture live ticking countdown increments and pass them to audience nodes
     socket.on('scanning_countdown', (data) => {
+        // Drop countdown metrics instantly if the server scan state is closed
+        if (!isServerScanning) return; 
         socket.broadcast.emit('scan_countdown', data);
     });
 
-    // 3. Catch final biometric verification arrays and push them to audience screens
     socket.on('verdict', (payload) => {
-        console.log(`[Analysis Complete] Broadcast Verdict: ${payload.verdict} (${payload.drug})`);
-        socket.broadcast.emit('verdict_broadcast', payload);
+        isServerScanning = false; // Slam the telemetry gate shut!
+        console.log(`[Analysis Complete] Broadcast Verdict: ${payload.verdict}`);
+        socket.broadcast.emit('verdict', payload);
         socket.emit('broadcast_ack', { sentTo: audienceCount, verdict: payload.verdict });
     });
 
@@ -68,7 +68,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Dynamic assignment fallback parameters for cloud servers like Render
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log('\n┌─────────────────────────────────┐');
