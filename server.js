@@ -2,14 +2,27 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const path = require('path'); // Added for handling absolute paths securely
 
 const app = express();
 
 app.use(express.json()); 
 app.use(cors());
 
-// CRITICAL: This tells Express to serve your index.html and operator.html pages automatically
+// CRITICAL: Serves static files automatically from the root folder
 app.use(express.static(__dirname));
+
+// ── 🎯 EXPLICIT BASE ROUTE MAPPING ──
+// Safely falls back to serving index.html if raw root domain is accessed
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ── 🎛️ EXPLICIT OPERATOR DASHBOARD ROUTE ──
+// Allows you to access the dashboard beautifully at atomscan.name.ng/operator without issues
+app.get('/operator', (req, res) => {
+    res.sendFile(path.join(__dirname, 'operator.html'));
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -56,7 +69,6 @@ function getTotalViewers() {
 }
 
 // ── 📡 PUBLIC HTTP ENDPOINT FOR THE AUDIENCE ──
-// We are using app.post here to cleanly process the cache-busting requests from index.html
 app.post('/api/latest-scan', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
