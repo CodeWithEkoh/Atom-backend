@@ -26,7 +26,6 @@ let socketAudienceCount = 0;
 let isServerScanning = false; 
 
 // ── 📊 HTTP ACTIVE VISITOR TRACKER ──
-// Maps unique IP hashes to timestamps to approximate live concurrent audience members
 let activeHttpViewers = new Map();
 
 // ── 🔒 THE STICKY MEMORY CACHE LAYER ──
@@ -42,11 +41,10 @@ let atomCacheState = {
 setInterval(() => {
     const now = Date.now();
     for (let [ip, timestamp] of activeHttpViewers.entries()) {
-        if (now - timestamp > 12000) { // If no ping in 12 seconds, they departed
+        if (now - timestamp > 12000) { 
             activeHttpViewers.delete(ip);
         }
     }
-    // Broadcast the real-time calculated viewer count straight to your operator dashboard
     io.emit('audience_update', { count: getTotalViewers() });
 }, 10000);
 
@@ -54,13 +52,14 @@ function getTotalViewers() {
     return socketAudienceCount + activeHttpViewers.size;
 }
 
-// ── 📡 PUBLIC HTTP ENDPOINT FOR THE AUDIENCE ──
-app.get('/api/latest-scan', (req, res) => {
+// ── 📡 UPDATED PUBLIC HTTP POST ENDPOINT FOR THE AUDIENCE ──
+// Changed from app.get to app.post to block edge caching routers completely
+app.post('/api/latest-scan', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     
-    // Track this HTTP request's IP to add them to the live counter
+    // Track unique incoming visitor IPs
     const visitorIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     activeHttpViewers.set(visitorIp, Date.now());
 
