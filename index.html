@@ -69,7 +69,7 @@
   <div class="card">
     <div class="card-label">Live Sensor Telemetry Matrix</div>
     <div class="sensor-grid">
-      <div class="ch ch-R"><div class="ch-lbl">Red Channel</div><div class="ch-val" id="vR">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bR"></div></div></div>
+      <div class="ch ch-R"><div class="ch-lbl">Red Channel</div><div class="ch-val" id="vR">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bR); }"></div></div></div>
       <div class="ch ch-G"><div class="ch-lbl">Green Channel</div><div class="ch-val" id="vG">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bG"></div></div></div>
       <div class="ch ch-B"><div class="ch-lbl">Blue Channel</div><div class="ch-val" id="vB">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bB"></div></div></div>
       <div class="ch ch-C"><div class="ch-lbl">Clear Channel</div><div class="ch-val" id="vC">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bC"></div></div></div>
@@ -87,8 +87,8 @@
   let pollTracker = null;
 
   function syncWithAtomEngine() {
-    // POST syntax combined with runtime query parameters stops network proxy caching cold
-    fetch('/api/latest-scan?cb=' + Date.now(), { 
+    // Forcing absolute path to the core Render cluster fixes the custom domain routing failure completely
+    fetch('https://atom-5r4p.onrender.com/api/latest-scan?cb=' + Date.now(), { 
       method: "POST",
       headers: {
         'Content-Type': 'application/json',
@@ -108,36 +108,25 @@
 
         const badge = $("verdictBadge");
 
-        // STATE 1: System Idling
         if (data.state === "IDLE") {
           $("modeIndicator").style.display = "none";
           badge.className = "verdict-badge idle"; 
           badge.textContent = "⬡ Awaiting Scan Trigger";
           $("verdictMeta").textContent = "The operator has not initiated a validation sequence yet.";
-          
           resetTelemetry();
-          adjustPollingInterval(3500); // Low footprint check when idle
+          adjustPollingInterval(3500); 
         } 
-        
-        // STATE 2: Actively Scanning
         else if (data.state === "SCANNING") {
           $("modeIndicator").style.display = "inline-flex";
           $("modeIndicator").textContent = data.mode === "AUTO_DETECT" ? "✨ Auto-Detect (AI Mode) Active" : "🔍 Targeted Audit Verification Active";
-          
           badge.className = "verdict-badge scanning"; 
           badge.textContent = data.timeLeft > 0 ? `⏳ Scanning... ${data.timeLeft}s remaining` : "⏳ Processing Matrix...";
-          
-          if (data.liveData) {
-            updateTelemetryUI(data.liveData);
-          }
-          adjustPollingInterval(1000); // Tight check cycle to display real-time counters
+          if (data.liveData) updateTelemetryUI(data.liveData);
+          adjustPollingInterval(1000); 
         } 
-        
-        // STATE 3: Final Target Acquired & Frozen
         else if (data.state === "VERDICT_READY" && data.payload) {
           $("modeIndicator").style.display = "inline-flex";
           const payload = data.payload;
-          
           if (payload.mode === "AUTO") {
             $("modeIndicator").textContent = "✨ Auto-Detect Result";
             badge.className = `verdict-badge ${payload.verdict === 'GENUINE' ? "genuine" : "suspect"}`;
@@ -152,21 +141,9 @@
               badge.textContent = payload.verdict === 'GENUINE' ? `✓ VERIFIED — Authentic` : `✗ SUSPECT — Profile Anomaly`; 
             }
           }
-          
           $("verdictMeta").textContent = `Distance: ${payload.distance} | Threshold: ${payload.threshold}`;
-          
-          if (payload.live) {
-            updateTelemetryUI(payload.live);
-          } else if (data.liveData) {
-            updateTelemetryUI(data.liveData);
-          }
-
-          // TERMINATION LOCKOUT
-          clearTimeout(pollTracker);
-          console.log("🔒 Target State Locked. Execution loop terminated cleanly.");
-        }
-        else {
-          adjustPollingInterval(3000);
+          if (payload.live) updateTelemetryUI(payload.live);
+          adjustPollingInterval(3000); // Keep polling in case operator resets to IDLE
         }
       })
       .catch(err => {
