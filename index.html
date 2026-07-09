@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Atom — Live Audience Display</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy:  #0A1628; --teal:  #0D9488; --teal2: #0F766E;
+    --slate: #475569; --border:#1E3A5F; --green: #16A34A;
+    --red:   #DC2626; --white: #FFFFFF; --amber: #D97706;
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--white); min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-icon { width: 34px; height: 34px; background: var(--teal); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .brand h1  { font-size: 16px; font-weight: 700; }
+  .brand sub { font-size: 10px; color: rgba(255,255,255,0.4); display: block; }
+  .pills { display: flex; gap: 10px; align-items: center; }
+  .pill { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); }
+  .pill.ok   .dot { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .pill.ok        { border-color: rgba(22,163,74,0.35); }
+  .pill.connecting .dot { background: var(--amber); }
+  .pill.connecting     { border-color: rgba(217,119,6,0.35); }
+  main { flex: 1; padding: 22px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+  .card-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--teal); text-transform: uppercase; margin-bottom: 14px; }
+  .verdict-card { grid-column: 1 / -1; text-align: center; padding: 28px; }
+  .mode-indicator { display: inline-flex; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(255,255,255,0.05); padding: 4px 12px; border-radius: 999px; margin-bottom: 12px; color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); }
+  .verdict-badge { display: inline-flex; align-items: center; gap: 10px; padding: 12px 32px; border-radius: 999px; font-size: 20px; font-weight: 800; letter-spacing: 0.5px; transition: all 0.35s; margin-bottom: 10px; }
+  .verdict-badge.idle     { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.25); font-size: 15px; }
+  .verdict-badge.genuine  { background: rgba(22,163,74,0.2);  color: #4ADE80; border: 2px solid rgba(22,163,74,0.5); box-shadow: 0 0 40px rgba(22,163,74,0.25); }
+  .verdict-badge.suspect  { background: rgba(220,38,38,0.2);  color: #F87171; border: 2px solid rgba(220,38,38,0.5); box-shadow: 0 0 40px rgba(220,38,38,0.25); }
+  .verdict-badge.scanning { background: rgba(217,119,6,0.15); color: var(--amber); border: 2px solid rgba(217,119,6,0.4); box-shadow: 0 0 20px rgba(217,119,6,0.15); }
+  .verdict-meta { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 6px; font-family: monospace; }
+  .sensor-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .ch { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+  .ch .ch-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .ch-R .ch-lbl { color: #F87171; } .ch-G .ch-lbl { color: #4ADE80; } .ch-B .ch-lbl { color: #60A5FA; } .ch-C .ch-lbl { color: rgba(255,255,255,0.4); }
+  .ch .ch-val { font-size: 22px; font-weight: 700; font-family: monospace; }
+  .ch-bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.07); margin-top: 8px; overflow: hidden; }
+  .ch-bar-fill { height: 100%; border-radius: 2px; width: 0%; transition: width 0.25s ease; }
+  .ch-R .ch-bar-fill { background: #F87171; } .ch-G .ch-bar-fill { background: #4ADE80; } .ch-B .ch-bar-fill { background: #60A5FA; } .ch-C .ch-bar-fill { background: rgba(255,255,255,0.35); }
+  .color-swatch { height: 70px; border-radius: 10px; background: #1E293B; border: 1px solid var(--border); margin-top: 12px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: rgba(255,255,255,0.3); transition: background 0.3s; }
+  .log-card { display: flex; flex-direction: column; }
+  .log { background: rgba(0,0,0,0.35); border-radius: 8px; padding: 10px 12px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 10px; color: rgba(255,255,255,0.35); grid-column: 1 / -1; }
+
+  @media (max-width: 768px) {
+    main { grid-template-columns: 1fr; padding: 14px; gap: 12px; }
+    .log-card { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"> <div class="brand-icon">💊</div><div><h1>Atom — Mobile Feed</h1><sub>Decentralized Live Broadcast Monitor Feed</sub></div></div>
+  <div class="pills"><div class="pill" id="socketPill"><div class="dot"></div><span id="socketTxt">Link: Off</span></div></div>
+</header>
+<main>
+  <div class="card verdict-card">
+    <div class="card-label">Live Broadcast Stream Verdict</div>
+    <div id="modeIndicator" class="mode-indicator" style="display: none;">System Idle</div>
+    <br/>
+    <div class="verdict-badge idle" id="verdictBadge">⬡ Awaiting Scan Trigger</div>
+    <div class="verdict-meta" id="verdictMeta">The operator has not initiated a validation sequence yet.</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Live Sensor Telemetry Matrix</div>
+    <div class="sensor-grid">
+      <div class="ch ch-R"><div class="ch-lbl">Red Channel</div><div class="ch-val" id="vR">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bR"></div></div></div>
+      <div class="ch ch-G"><div class="ch-lbl">Green Channel</div><div class="ch-val" id="vG">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bG"></div></div></div>
+      <div class="ch ch-B"><div class="ch-lbl">Blue Channel</div><div class="ch-val" id="vB">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bB"></div></div></div>
+      <div class="ch ch-C"><div class="ch-lbl">Clear Channel</div><div class="ch-val" id="vC">—</div><div class="ch-bar"><div class="ch-bar-fill" id="bC"></div></div></div>
+    </div>
+    <div class="color-swatch" id="swatch">Spectral Preview Window</div>
+  </div>
+  <div class="card log-card">
+    <div class="card-label">Mirrored Execution Logs</div>
+    <div class="log" id="logBox" style="flex: 1; height: auto;"></div>
+  </div>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let pollTracker = null;
+
+  function syncWithAtomEngine() {
+    // POST syntax combined with runtime query parameters stops network proxy caching cold
+    fetch('/api/latest-scan?cb=' + Date.now(), { 
+      method: "POST",
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      },
+      body: JSON.stringify({ ping: true })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Throttled");
+        return res.json();
+      })
+      .then(data => {
+        $("socketPill").className = "pill ok"; 
+        $("socketTxt").textContent = "Pipeline: Connected";
+
+        const badge = $("verdictBadge");
+
+        // STATE 1: System Idling
+        if (data.state === "IDLE") {
+          $("modeIndicator").style.display = "none";
+          badge.className = "verdict-badge idle"; 
+          badge.textContent = "⬡ Awaiting Scan Trigger";
+          $("verdictMeta").textContent = "The operator has not initiated a validation sequence yet.";
+          
+          resetTelemetry();
+          adjustPollingInterval(3500); // Low footprint check when idle
+        } 
+        
+        // STATE 2: Actively Scanning
+        else if (data.state === "SCANNING") {
+          $("modeIndicator").style.display = "inline-flex";
+          $("modeIndicator").textContent = data.mode === "AUTO_DETECT" ? "✨ Auto-Detect (AI Mode) Active" : "🔍 Targeted Audit Verification Active";
+          
+          badge.className = "verdict-badge scanning"; 
+          badge.textContent = data.timeLeft > 0 ? `⏳ Scanning... ${data.timeLeft}s remaining` : "⏳ Processing Matrix...";
+          
+          if (data.liveData) {
+            updateTelemetryUI(data.liveData);
+          }
+          adjustPollingInterval(1000); // Tight check cycle to display real-time counters
+        } 
+        
+        // STATE 3: Final Target Acquired & Frozen
+        else if (data.state === "VERDICT_READY" && data.payload) {
+          $("modeIndicator").style.display = "inline-flex";
+          const payload = data.payload;
+          
+          if (payload.mode === "AUTO") {
+            $("modeIndicator").textContent = "✨ Auto-Detect Result";
+            badge.className = `verdict-badge ${payload.verdict === 'GENUINE' ? "genuine" : "suspect"}`;
+            badge.textContent = payload.verdict === 'GENUINE' ? `✓ DETECTED — ${payload.drug}` : `✗ UNKNOWN — Counterfeit Flagged`;
+          } else {
+            $("modeIndicator").textContent = "🔍 Targeted Audit Result";
+            if (payload.mismatch) { 
+              badge.className = "verdict-badge suspect"; 
+              badge.textContent = `⚠️ MISMATCH — Box Swapped`; 
+            } else { 
+              badge.className = `verdict-badge ${payload.verdict === 'GENUINE' ? "genuine" : "suspect"}`; 
+              badge.textContent = payload.verdict === 'GENUINE' ? `✓ VERIFIED — Authentic` : `✗ SUSPECT — Profile Anomaly`; 
+            }
+          }
+          
+          $("verdictMeta").textContent = `Distance: ${payload.distance} | Threshold: ${payload.threshold}`;
+          
+          if (payload.live) {
+            updateTelemetryUI(payload.live);
+          } else if (data.liveData) {
+            updateTelemetryUI(data.liveData);
+          }
+
+          // TERMINATION LOCKOUT
+          clearTimeout(pollTracker);
+          console.log("🔒 Target State Locked. Execution loop terminated cleanly.");
+        }
+        else {
+          adjustPollingInterval(3000);
+        }
+      })
+      .catch(err => {
+        $("socketPill").className = "pill connecting"; 
+        $("socketTxt").textContent = "Pipeline: Reconnecting...";
+        adjustPollingInterval(4000);
+      });
+  }
+
+  function updateTelemetryUI(liveData) {
+    const { R, G, B, C } = liveData;
+    $("vR").textContent = R; $("vG").textContent = G; $("vB").textContent = B; $("vC").textContent = C;
+    const max = Math.max(C, 1);
+    $("bR").style.width = `${Math.min(R / max * 100, 100)}%`; 
+    $("bG").style.width = `${Math.min(G / max * 100, 100)}%`; 
+    $("bB").style.width = `${Math.min(B / max * 100, 100)}%`; 
+    $("bC").style.width = `${Math.min(C / 65535 * 100, 100)}%`; 
+    const sc = Math.min(255 / max, 1) * (C / 65535 * 6 + 0.5);
+    const r8 = Math.min(Math.round(R * sc), 255); 
+    const g8 = Math.min(Math.round(G * sc), 255); 
+    const b8 = Math.min(Math.round(B * sc), 255);
+    $("swatch").style.background = `rgb(${r8},${g8},${b8})`; 
+    $("swatch").textContent = `rgb(${r8}, ${g8}, ${b8})`;
+  }
+
+  function resetTelemetry() {
+    $("vR").textContent = "—"; $("vG").textContent = "—"; $("vB").textContent = "—"; $("vC").textContent = "—";
+    $("bR").style.width = "0%"; $("bG").style.width = "0%"; $("bB").style.width = "0%"; $("bC").style.width = "0%";
+    $("swatch").style.background = "#1E293B"; $("swatch").textContent = "Spectral Preview Window";
+  }
+
+  function adjustPollingInterval(newTime) {
+    clearTimeout(pollTracker);
+    pollTracker = setTimeout(syncWithAtomEngine, newTime);
+  }
+
+  window.addEventListener('DOMContentLoaded', syncWithAtomEngine);
+</script>
+</body>
+</html>
