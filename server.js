@@ -5,7 +5,6 @@ const cors = require('cors');
 
 const app = express();
 
-// Enable JSON parsing middleware so the backend can process raw HTTP payloads if needed
 app.use(express.json()); 
 app.use(cors());
 
@@ -15,7 +14,7 @@ const io = new Server(server, {
         origin: [
             "https://atom-scan.netlify.app",
             "http://localhost:3000",
-            "https://atomscan.name.ng", // Added your custom domain to allow audience requests safely
+            "https://atomscan.name.ng", 
             "http://atomscan.name.ng"
         ],
         methods: ["GET", "POST"],
@@ -23,27 +22,48 @@ const io = new Server(server, {
     }
 });
 
-let audienceCount = 0;
+let socketAudienceCount = 0;
 let isServerScanning = false; 
 
+// ── 📊 HTTP ACTIVE VISITOR TRACKER ──
+// Maps unique IP hashes to timestamps to approximate live concurrent audience members
+let activeHttpViewers = new Map();
+
 // ── 🔒 THE STICKY MEMORY CACHE LAYER ──
-// This object acts as the permanent source of truth for the 600 HTTP polling devices.
 let atomCacheState = {
-    state: "IDLE", // Can be: IDLE, SCANNING, VERDICT_READY
+    state: "IDLE", 
     mode: "TARGETED",
     timeLeft: 10,
     liveData: null,
     payload: null
 };
 
-// ── 📡 NEW EXPLICIT PUBLIC HTTP ENDPOINT FOR THE AUDIENCE ──
+// Clean out expired visitor timestamps every 10 seconds
+setInterval(() => {
+    const now = Date.now();
+    for (let [ip, timestamp] of activeHttpViewers.entries()) {
+        if (now - timestamp > 12000) { // If no ping in 12 seconds, they departed
+            activeHttpViewers.delete(ip);
+        }
+    }
+    // Broadcast the real-time calculated viewer count straight to your operator dashboard
+    io.emit('audience_update', { count: getTotalViewers() });
+}, 10000);
+
+function getTotalViewers() {
+    return socketAudienceCount + activeHttpViewers.size;
+}
+
+// ── 📡 PUBLIC HTTP ENDPOINT FOR THE AUDIENCE ──
 app.get('/api/latest-scan', (req, res) => {
-    // Force modern devices to completely bypass network caching
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     
-    // Serve the lightweight system status JSON snapshot
+    // Track this HTTP request's IP to add them to the live counter
+    const visitorIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    activeHttpViewers.set(visitorIp, Date.now());
+
     res.json(atomCacheState);
 });
 
@@ -51,27 +71,25 @@ io.on('connection', (socket) => {
     const role = socket.handshake.query.role || 'viewer';
     console.log(`[System Link] New connection established. Role assigned: ${role}`);
 
-    // If a device still connects over raw websockets, we handle it natively
     if (role === 'audience' || role === 'viewer') {
-        audienceCount++;
-        io.emit('audience_update', { count: audienceCount });
+        socketAudienceCount++;
+        io.emit('audience_update', { count: getTotalViewers() });
         socket.emit('registration_confirmed'); 
     }
 
     if (role === 'operator') {
         socket.emit('server_ack', { 
             message: 'Atom Node Pipeline Online', 
-            audienceCount: audienceCount 
+            audienceCount: getTotalViewers() 
         });
     }
 
-    // ── INTER-PORT EVENT ROUTING MATRIX (WITH CACHE CAPTURE) ──
+    // ── INTER-PORT EVENT ROUTING MATRIX ──
 
     socket.on('scanning_start', (data) => {
         isServerScanning = true; 
         console.log('[Matrix Sync] Operator initiated sweep. Broadcasting state...');
         
-        // 1. Update the HTTP cache state instantly for incoming phone requests
         atomCacheState.state = "SCANNING";
         atomCacheState.mode = (data && data.mode) ? data.mode : "TARGETED";
         atomCacheState.timeLeft = 10;
@@ -84,7 +102,6 @@ io.on('connection', (socket) => {
     socket.on('scanning_countdown', (data) => {
         if (!isServerScanning) return; 
         
-        // 2. Stream real-time mid-scan telemetry numbers straight into the sticky snapshot
         atomCacheState.state = "SCANNING";
         if (data) {
             atomCacheState.timeLeft = data.timeLeft;
@@ -100,24 +117,22 @@ io.on('connection', (socket) => {
         isServerScanning = false; 
         console.log(`[Analysis Complete] Broadcast Verdict: ${payload.verdict}`);
         
-        // 3. Move the final matrix result here. It stays STICKY and frozen until you start the NEXT scan.
         atomCacheState.state = "VERDICT_READY";
         atomCacheState.payload = payload;
 
         socket.broadcast.emit('verdict', payload);
-        socket.emit('broadcast_ack', { sentTo: audienceCount, verdict: payload.verdict });
+        socket.emit('broadcast_ack', { sentTo: getTotalViewers(), verdict: payload.verdict });
     });
 
     socket.on('disconnect', () => {
         console.log(`[System Link] Connection closed. Role departed: ${role}`);
         if (role === 'audience' || role === 'viewer') {
-            audienceCount = Math.max(0, audienceCount - 1);
-            io.emit('audience_update', { count: audienceCount });
+            socketAudienceCount = Math.max(0, socketAudienceCount - 1);
+            io.emit('audience_update', { count: getTotalViewers() });
         }
     });
 });
 
-// Added an optional administrative reset route in case you ever want to force clean back to idle manually
 app.get('/api/system/reset-idle', (req, res) => {
     isServerScanning = false;
     atomCacheState = { state: "IDLE", mode: "TARGETED", timeLeft: 10, liveData: null, payload: null };
