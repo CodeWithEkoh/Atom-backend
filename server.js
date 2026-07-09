@@ -8,6 +8,9 @@ const app = express();
 app.use(express.json()); 
 app.use(cors());
 
+// CRITICAL: This tells Express to serve your index.html and operator.html pages automatically
+app.use(express.static(__dirname));
+
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -52,14 +55,13 @@ function getTotalViewers() {
     return socketAudienceCount + activeHttpViewers.size;
 }
 
-// ── 📡 UPDATED PUBLIC HTTP POST ENDPOINT FOR THE AUDIENCE ──
-// Changed from app.get to app.post to block edge caching routers completely
+// ── 📡 PUBLIC HTTP ENDPOINT FOR THE AUDIENCE ──
+// We are using app.post here to cleanly process the cache-busting requests from index.html
 app.post('/api/latest-scan', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     
-    // Track unique incoming visitor IPs
     const visitorIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     activeHttpViewers.set(visitorIp, Date.now());
 
