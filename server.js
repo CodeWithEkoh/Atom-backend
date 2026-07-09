@@ -26,6 +26,14 @@ io.on('connection', (socket) => {
     console.log(`[System Link] New connection established. Role assigned: ${role}`);
 
     if (role === 'audience' || role === 'viewer') {
+        // ── 🔒 THE GATEKEEPER VALVE ──
+        // If 50 students are locked in, reject the 51st seamlessly
+        if (audienceCount >= 50) {
+            socket.emit('room_full', { message: "Audience capacity reached (50/50)." });
+            socket.disconnect(true); // Evict immediately to save memory sockets
+            return;
+        }
+
         audienceCount++;
         io.emit('audience_update', { count: audienceCount });
         socket.emit('registration_confirmed'); 
